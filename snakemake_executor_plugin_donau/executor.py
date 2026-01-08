@@ -199,39 +199,38 @@ class Executor(RemoteExecutor):
         status_map = {}
         error_occurred = False
 
-        async def query_djob(additional_args: List[str], target_ids: set):
+        async def query_djob(target_ids: set):
             nonlocal error_occurred
             if not target_ids:
                 return
-            cmd = ["djob", "-o", "jobid state", "--no-header"] + additional_args + list(target_ids)
-            try:
-                process = await asyncio.create_subprocess_exec(
-                    *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-                )
-                stdout, stderr = await process.communicate()
-                
-                if process.returncode != 0:
-                    logger.debug(f"djob command failed: {' '.join(cmd)}\nStderr: {stderr.decode()}")
+            
+            # 针对每个 job_id 单独查询，因为只输出 state 无法区分对应哪个 ID
+            # 虽然效率低一点，但最准确符合用户要求：djob -D -o "state" --no-header <ID>
+            
+            for jid in target_ids:
+                cmd = ["djob", "-D", "-o", "state", "--no-header", jid]
+                try:
+                    process = await asyncio.create_subprocess_exec(
+                        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                    )
+                    stdout, stderr = await process.communicate()
+                    
+                    if process.returncode != 0:
+                        # 查不到或者报错
+                        logger.debug(f"djob failed for {jid}: {stderr.decode()}")
+                        # 不标记全局 error，允许部分查询失败
+                        continue
+
+                    output = stdout.decode().strip()
+                    if output:
+                        # 输出应该只有一行状态，例如 "SUCCEEDED"
+                        state = output.split('\n')[0].strip()
+                        status_map[jid] = state
+                except Exception as e:
+                    logger.debug(f"Error querying Donau status for {jid}: {e}")
                     error_occurred = True
-                    return
 
-                output = stdout.decode().strip()
-                if output:
-                    for line in output.split("\n"):
-                        parts = line.split()
-                        if len(parts) >= 2:
-                            jid, state = parts[0], parts[1]
-                            if jid in target_ids:
-                                status_map[jid] = state
-            except Exception as e:
-                logger.debug(f"Error querying Donau status: {e}")
-                error_occurred = True
-
-        await query_djob([], job_ids)
-        
-        remaining = job_ids - set(status_map.keys())
-        if remaining and not error_occurred:
-            await query_djob(["-D"], remaining)
+        await query_djob(job_ids)
 
         if error_occurred:
             return None

@@ -19,6 +19,6 @@ common_settings = CommonSettings(
     pass_default_resources_args=True,
     pass_envvar_declarations_to_cmd=False,
     auto_deploy_default_storage_provider=False,
-    init_seconds_before_status_checks=20, # 提交后等20秒再开始查状态，给调度器一点缓冲时间
+    init_seconds_before_status_checks=5, # 提交后等5秒再开始查状态，加快测试反馈
     pass_group_args=True,
 )
