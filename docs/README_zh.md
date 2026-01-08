@@ -44,16 +44,24 @@ snakemake --executor donau --jobs 100
 在 `Snakefile` 中定义资源需求，插件会自动将其转换为调度器参数：
 
 ```python
-rule analysis:
+rule complex_task:
     input:
         "data/raw.txt"
     output:
         "results/final.txt"
+    # 1. 设置优先级 (对应 dsub -p)
+    priority: 9999
+    # 2. 设置其他资源
     resources:
-        queue = "arm",        # 指定队列 (对应 dsub -q)
-        mem_mb = 4096,        # 内存限制 (对应 -R mem=4096MB)
-        runtime = 60          # 运行时间限制，单位分钟 (对应 dsub -T 3600)
-    threads: 8                # CPU核数 (对应 -R cpu=8)
+        queue = "fat_node",       # 队列 (-q)
+        mem_mb = 8192,            # 内存 (-R mem=8192MB)
+        runtime = 120,            # 运行时间 (-T 7200秒)
+        nodes = 2,                # 副本/节点数 (-N 2)
+        exclusive = True,         # 独占模式 (-x job)
+        tag = "group=bio",        # 自定义标签 (--tag)
+        account = "proj_01",      # 账户 (-A)
+        mpi = "openmpi"           # MPI 类型 (--mpi)
+    threads: 8                    # CPU核数 (-R cpu=8)
     shell:
         "echo 'Running on Donau' > {output}"
 ```
@@ -65,40 +73,24 @@ rule analysis:
 | Snakemake 关键字 | 含义 | Donau 参数映射 | 说明 |
 | :--- | :--- | :--- | :--- |
 | `threads` | CPU 核心数 | `-R cpu=<threads>` | 默认为 1 |
+| `priority` | 优先级 | `-p <int>` | 映射 Snakemake 优先级 (1-9999) |
 | `resources.mem_mb` | 内存 (MB) | `-R mem=<mem_mb>MB` | 默认为 1024MB |
 | `resources.queue` | 队列名称 | `-q <queue>` | 也支持 `partition` 关键字 |
 | `resources.runtime` | 运行时间 (分钟) | `-T <seconds>` | 自动转换为秒。也支持 `time_min` |
-| `resources.mem_mb_per_cpu` | 单核内存 | 自动计算总内存 | 转换为总内存后传给 `-R mem=...` |
-
-### 实际生成的命令示例
-
-如果规则定义如下：
-```python
-threads: 4
-resources:
-    mem_mb=8192,
-    queue="fat_node",
-    runtime=30
-```
-
-插件生成的提交命令将类似于：
-```bash
-dsub -n smk_rule_uuid -oo .snakemake/donau_logs/...
-     --cwd /current/work/dir \
-     -q fat_node \
-     -R "cpu=4,mem=8192MB" \
-     -T 1800 \
-     ...
-```
+| `resources.nodes` | 副本/节点数 | `-N <count>` | 也支持 `replica` 关键字 |
+| `resources.exclusive` | 独占模式 | `-x job` | 设置为 True 或 1 开启 |
+| `resources.tag` | 自定义标签 | `--tag <string>` | 例如 "key=value" |
+| `resources.account` | 账户 | `-A <account>` | 计费或权限用 |
+| `resources.mpi` | MPI 类型 | `--mpi <type>` | 如 `openmpi`, `intelmpi` |
 
 ## 📝 日志与排错
 
-### 1. 插件系统日志 (运维/调试用)
-插件的所有调度行为（提交、查询结果、错误信息）都会记录在：
-- **路径**: `.snakemake/donau_executor.log`
-- **内容**: 包含详细的时间戳、UUID、执行的 Shell 命令及其标准输出。
+### 1. 执行器系统日志 (Workdir)
+调度行为日志现在会直接生成在您的工作目录下：
+- **路径**: `./donau_executor.log`
+- **内容**: 包含详细的时间戳、UUID、执行的 Shell 命令及其调试信息。
 
-### 2. 任务标准输出日志 (用户用)
+### 2. 任务标准输出日志 (Per Rule)
 每个具体任务的 stdout 和 stderr 会被重定向到：
 - **路径**: `.snakemake/donau_logs/rule_<name>/<wildcards>/<jobid>.log`
 - **用途**: 查看任务具体的运行报错或程序输出。

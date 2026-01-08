@@ -23,12 +23,10 @@ class Executor(RemoteExecutor):
         # 生成一个唯一的运行ID
         self.run_uuid = str(uuid.uuid4())
         
-        # 获取持久化目录并初始化日志
-        log_dir = ".snakemake"
-        if hasattr(self.workflow, "persistence") and self.workflow.persistence:
-             log_dir = self.workflow.persistence.path
+        # 使用工作目录初始化日志
+        workdir = self.workflow.workdir_init or "."
+        setup_logger(workdir)
         
-        setup_logger(log_dir)
         logger.info(f"Donau Executor initialized. Run UUID: {self.run_uuid}")
 
     def run_job(self, job: JobExecutorInterface):
@@ -41,15 +39,11 @@ class Executor(RemoteExecutor):
             wildcards_str = "group"
         else:
             log_folder = f"rule_{job.name}"
-            # 将 wildcards 展平为字符串
             wildcards_str = "_".join(f"{k}-{v}" for k, v in job.wildcards_dict.items()) or "unique"
-            # 替换掉路径中的斜杠
             wildcards_str = wildcards_str.replace("/", "-")
 
-        # 作业名 (Job Name)
         jobname = f"smk_{job.name}_{self.run_uuid[:8]}"
         
-        # 构造日志文件路径
         logfile = os.path.abspath(
             f".snakemake/donau_logs/{log_folder}/{wildcards_str}/{job.jobid}.log"
         )
@@ -59,19 +53,44 @@ class Executor(RemoteExecutor):
         cmd_parts = ["dsub", "-n", jobname, "-oo", logfile]
         cmd_parts.extend(["--cwd", self.workflow.workdir_init])
 
-        # --- 资源映射 ---
+        # --- 基础资源映射 ---
+        # 队列 (-q)
         if job.resources.get("queue"):
             cmd_parts.extend(["-q", str(job.resources.queue)])
         elif job.resources.get("partition"):
             cmd_parts.extend(["-q", str(job.resources.partition)])
 
+        # 优先级 (-p): Donau 范围 [1, 9999]
+        if job.priority != 0:
+            # 将 Snakemake 优先级映射到 1-9999
+            p_val = max(1, min(9999, int(job.priority)))
+            cmd_parts.extend(["-p", str(p_val)])
+
+        # 副本数/节点数 (-N)
+        # 支持 resources: nodes=X 或 replica=X
+        nnodes = job.resources.get("nodes") or job.resources.get("replica")
+        if nnodes:
+            cmd_parts.extend(["-N", str(nnodes)])
+
+        # 账户 (-A)
         if job.resources.get("account"):
             cmd_parts.extend(["-A", str(job.resources.account)])
 
+        # MPI 类型 (--mpi)
         if job.resources.get("mpi"):
             cmd_parts.extend(["--mpi", str(job.resources.mpi)])
 
-        # CPU 和内存
+        # 排他模式 (-x)
+        # 支持 resources: exclusive=1
+        if job.resources.get("exclusive"):
+            cmd_parts.extend(["-x", "job"])
+
+        # 自定义标签 (--tag)
+        # 支持 resources: tag="key=value"
+        if job.resources.get("tag"):
+            cmd_parts.extend(["--tag", str(job.resources.tag)])
+
+        # CPU 和内存 (-R)
         cpus = max(1, job.threads)
         mem_mb = job.resources.get("mem_mb", 1024)
         if job.resources.get("mem_mb_per_cpu"):
@@ -79,7 +98,7 @@ class Executor(RemoteExecutor):
         
         cmd_parts.extend(["-R", f"cpu={cpus},mem={int(mem_mb)}MB"])
 
-        # 运行时间
+        # 运行时间 (-T)
         runtime_min = job.resources.get("runtime") or job.resources.get("time_min")
         if runtime_min:
             try:
@@ -111,7 +130,7 @@ class Executor(RemoteExecutor):
             raise WorkflowError(f"Could not parse Donau Job ID from output:\n{output}")
 
         external_jobid = match.group(1)
-        logger.info(f"Job {job.name} submitted successfully with ID: {external_jobid}")
+        logger.info(f"Job {job.name} submitted successfully (ID: {external_jobid})")
         
         self.report_job_submission(
             SubmittedJobInfo(

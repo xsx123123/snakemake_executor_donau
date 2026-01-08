@@ -46,18 +46,24 @@ snakemake --executor donau --jobs 100
 Define resources in your `Snakefile`, and the plugin will automatically convert them to scheduler parameters:
 
 ```python
-rule analysis:
+rule complex_task:
     input:
         "data/raw.txt"
     output:
         "results/final.txt"
+    # 1. Set Job Priority (Maps to dsub -p)
+    priority: 50
+    # 2. Set Resources
     resources:
-        queue = "arm",        # Specify queue (maps to dsub -q)
-        mem_mb = 4096,        # Memory limit (maps to -R mem=4096MB)
-        runtime = 60,         # Runtime limit in minutes (maps to dsub -T 3600)
-        account = "proj_01",  # Billing account (maps to dsub -A)
-        mpi = "openmpi"       # MPI type (maps to dsub --mpi)
-    threads: 8                # CPU cores (maps to -R cpu=8)
+        queue = "fat_node",       # -q fat_node
+        mem_mb = 8192,            # -R mem=8192MB
+        runtime = 120,            # -T 7200 (120 min -> seconds)
+        nodes = 2,                # -N 2 (Replicas/Nodes)
+        exclusive = True,         # -x (Exclusive mode)
+        tag = "group=bio",        # --tag group=bio
+        account = "proj_01",      # -A proj_01
+        mpi = "openmpi"           # --mpi openmpi
+    threads: 8                    # -R cpu=8
     shell:
         "echo 'Running on Donau' > {output}"
 ```
@@ -69,20 +75,24 @@ The plugin maps Snakemake resource definitions to `dsub` parameters as follows:
 | Snakemake Keyword | Meaning | Donau Parameter | Notes |
 | :--- | :--- | :--- | :--- |
 | `threads` | CPU Cores | `-R cpu=<threads>` | Defaults to 1 |
+| `priority` | Priority | `-p <int>` | Maps Snakemake priority (1-9999) |
 | `resources.mem_mb` | Memory (MB) | `-R mem=<mem_mb>MB` | Defaults to 1024MB |
 | `resources.queue` | Queue Name | `-q <queue>` | `partition` is also supported |
 | `resources.runtime` | Runtime (min) | `-T <seconds>` | Converted to seconds. `time_min` is also supported |
+| `resources.nodes` | Replicas/Nodes | `-N <count>` | `replica` is also supported |
+| `resources.exclusive` | Exclusive | `-x job` | Set to `True` or `1` to enable |
+| `resources.tag` | Custom Tag | `--tag <string>` | e.g. "key=value" |
 | `resources.account` | Account | `-A <account>` | For billing/permissions |
 | `resources.mpi` | MPI Type | `--mpi <type>` | e.g., `openmpi`, `intelmpi` |
 
 ## 📝 Logging & Troubleshooting
 
-### 1. Plugin System Log (For Ops/Debug)
-All scheduling actions (submissions, query results, errors) are recorded in:
-- **Path**: `.snakemake/donau_executor.log`
-- **Content**: Detailed timestamps, UUIDs, executed shell commands, and their raw outputs.
+### 1. Executor Log (Workdir)
+Scheduling actions and errors are now logged directly to your working directory:
+- **Path**: `./donau_executor.log`
+- **Content**: Detailed timestamps, UUIDs, executed shell commands, and debugging info.
 
-### 2. Job Standard Output Log (For Users)
+### 2. Job Standard Output (Per Rule)
 The stdout and stderr of each specific job are redirected to:
 - **Path**: `.snakemake/donau_logs/rule_<name>/<wildcards>/<jobid>.log`
 - **Usage**: To check specific job errors or program outputs.
