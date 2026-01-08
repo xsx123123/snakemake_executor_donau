@@ -153,10 +153,15 @@ class Executor(RemoteExecutor):
 
         status_map = await self._get_donau_job_status_async(job_ids)
         
+        if status_map is None:
+            for job in active_jobs:
+                yield job
+            return
+
         for job in active_jobs:
             jid = job.external_jobid
             if jid not in status_map:
-                yield job
+                self.report_job_success(job)
                 continue
 
             state = status_map[jid].upper()
@@ -190,9 +195,12 @@ class Executor(RemoteExecutor):
                 time.sleep(delay * (i + 1))
         return ""
 
-    async def _get_donau_job_status_async(self, job_ids: set) -> Dict[str, str]:
+    async def _get_donau_job_status_async(self, job_ids: set) -> Optional[Dict[str, str]]:
         status_map = {}
+        error_occurred = False
+
         async def query_djob(additional_args: List[str], target_ids: set):
+            nonlocal error_occurred
             if not target_ids:
                 return
             cmd = ["djob", "-o", "jobid state", "--no-header"] + additional_args + list(target_ids)
@@ -200,7 +208,13 @@ class Executor(RemoteExecutor):
                 process = await asyncio.create_subprocess_exec(
                     *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                 )
-                stdout, _ = await process.communicate()
+                stdout, stderr = await process.communicate()
+                
+                if process.returncode != 0:
+                    logger.debug(f"djob command failed: {' '.join(cmd)}\nStderr: {stderr.decode()}")
+                    error_occurred = True
+                    return
+
                 output = stdout.decode().strip()
                 if output:
                     for line in output.split("\n"):
@@ -211,9 +225,15 @@ class Executor(RemoteExecutor):
                                 status_map[jid] = state
             except Exception as e:
                 logger.debug(f"Error querying Donau status: {e}")
+                error_occurred = True
 
         await query_djob([], job_ids)
+        
         remaining = job_ids - set(status_map.keys())
-        if remaining:
+        if remaining and not error_occurred:
             await query_djob(["-D"], remaining)
+
+        if error_occurred:
+            return None
+
         return status_map
