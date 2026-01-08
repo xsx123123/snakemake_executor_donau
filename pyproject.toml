@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "snakemake-executor-donau"
+version = "0.1.0"
+description = "A Snakemake executor plugin for Huawei Donau scheduler"
+authors = [
+  { name="Jian Zhang", email="your_email@example.com" },
+]
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "snakemake>=8.0.0",
+    "snakemake-interface-executor-plugins",
+    "snakemake-interface-common",
+    "loguru"
+]
+
+[project.entry-points."snakemake.executors"]
+donau = "snakemake_executor_donau:Executor"
