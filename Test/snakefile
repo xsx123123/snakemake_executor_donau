@@ -1,0 +1,114 @@
+import time
+import os
+import random
+import tempfile
+
+# --- 配置区域 ---
+# 1. 增加样本量到 100 个，测试调度器吞吐量
+SAMPLES = [f"sample_{i:03d}" for i in range(1, 101)]
+
+rule all:
+    input:
+        "results/final_stress_report.txt"
+
+# 步骤1：全方位压力测试 (CPU + MEM + IO + 随机失败)
+rule hardcore_stress:
+    output:
+        "results/{sample}.result"
+    resources:
+        queue = "fat_x86",
+        # 动态资源：部分任务申请大内存，部分申请小内存，测试调度器的"拼图"能力
+        mem_mb = lambda wildcards, attempt: 4096 if int(wildcards.sample.split('_')[1]) % 2 == 0 else 2048,
+        runtime = 60
+    threads: 1
+    retries: 2  # 🌟 关键：如果任务失败，Snakemake 会自动重试 2 次
+    run:
+        import random
+        
+        # --- 0. 混沌测试 (模拟随机网络波动或节点故障) ---
+        # 10% 的概率直接抛出异常，测试 Snakemake 的 retries 是否生效
+        if random.random() < 0.1:
+            print("💀 触发随机故障 (Chaos Monkey)！模拟任务失败...")
+            raise Exception("Random Chaos Failure triggered! Snakemake should retry this.")
+
+        print(f"[{wildcards.sample}] Host: {os.uname().nodename} | Attempt: {rule.retries}")
+        
+        # --- 1. 内存压力 (Memory Stress) ---
+        # 申请 3GB (对于 4GB 的请求) 或 1.5GB (对于 2GB 的请求)
+        target_mem_gb = 3.0 if int(wildcards.sample.split('_')[1]) % 2 == 0 else 1.5
+        print(f"🔥 [MEM] 正在分配 {target_mem_gb}GB 内存...")
+        try:
+            # 这里的 bytearray 会实打实地占用物理内存
+            data_chunk = bytearray(int(target_mem_gb * 1024 * 1024 * 1024))
+            # 随机访问一下数组，防止操作系统进行"惰性分配" (Lazy Allocation)
+            data_chunk[100] = 1
+            data_chunk[-100] = 1
+            print("✅ 内存分配且触达成功！")
+        except MemoryError:
+            raise MemoryError("❌ 内存分配失败！集群限制生效了。")
+
+        # --- 2. IO 压力 (Disk Stress) ---
+        # 模拟生信流程中的大量中间文件读写 (100MB)
+        print("🔥 [IO] 正在进行磁盘 I/O 读写测试 (100MB)...")
+        io_start = time.time()
+        # 在当前目录下创建临时文件，测试网络文件系统的延迟
+        temp_filename = f"{output[0]}.tmp_io_stress"
+        with open(temp_filename, "wb") as f:
+            # 写 100MB 随机数据
+            f.write(os.urandom(100 * 1024 * 1024)) 
+        
+        # 读回来
+        with open(temp_filename, "rb") as f:
+            _ = f.read()
+        
+        # 删掉
+        os.remove(temp_filename)
+        io_duration = time.time() - io_start
+        print(f"✅ IO 测试完成，耗时: {io_duration:.2f}s")
+
+        # --- 3. CPU 压力 (Matrix Multiplication) ---
+        # 纯 Python 进行 500x500 矩阵乘法，非常消耗 CPU
+        print("🔥 [CPU] 正在进行矩阵乘法 (500x500)...")
+        cpu_start = time.time()
+        size = 500
+        A = [[random.random() for _ in range(size)] for _ in range(size)]
+        B = [[random.random() for _ in range(size)] for _ in range(size)]
+        # 只是为了烤机，结果不重要，算一部分即可防止超时
+        # 仅计算对角线部分以节省一点时间，但依然足够 heavy
+        result = [sum(a * b for a, b in zip(A_row, B_col)) for A_row, B_col in zip(A, zip(*B))]
+        
+        cpu_duration = time.time() - cpu_start
+        print(f"✅ CPU 测试完成，耗时: {cpu_duration:.2f}s")
+
+        # --- 4. 写入结果 ---
+        with open(output[0], "w") as f:
+            f.write(f"Sample: {wildcards.sample}\n")
+            f.write(f"Host: {os.uname().nodename}\n")
+            f.write(f"MEM Allocated: {target_mem_gb}GB\n")
+            f.write(f"IO Time: {io_duration:.2f}s\n")
+            f.write(f"CPU Time: {cpu_duration:.2f}s\n")
+            f.write("Status: Survived\n")
+
+# 步骤2：汇总报告
+rule summarize_all:
+    input:
+        expand("results/{sample}.result", sample=SAMPLES)
+    output:
+        "results/final_stress_report.txt"
+    resources:
+        queue = "fat_x86",
+        mem_mb = 1024
+    threads: 1
+    shell:
+        """
+        echo "=== 🌋 终极压力测试报告 ===" > {output}
+        echo "完成时间: $(date)" >> {output}
+        echo "成功样本数: $(ls results/*.result | wc -l) / 100" >> {output}
+        echo "" >> {output}
+        echo "--- 节点负载分布 ---" >> {output}
+        grep "Host" results/*.result | sort | uniq -c | sort -nr >> {output}
+        echo "" >> {output}
+        echo "--- 性能统计 (平均值) ---" >> {output}
+        echo "平均 IO 耗时: $(grep "IO Time" results/*.result | awk '{{sum+=$3}} END {{print sum/NR}}') 秒" >> {output}
+        echo "平均 CPU 耗时: $(grep "CPU Time" results/*.result | awk '{{sum+=$3}} END {{print sum/NR}}') 秒" >> {output}
+        """

@@ -41,6 +41,18 @@ Once installed, use the `--executor donau` argument to enable this plugin:
 snakemake --executor donau --jobs 100
 ```
 
+## 🧪 Testing
+
+A test environment is provided in the `Test/` directory. You can verify the plugin's functionality using the following command:
+
+```bash
+# Run from the project root
+snakemake --snakefile Test/snakefile --executor donau --jobs 10 --latency-wait 60
+```
+
+- `--jobs 10`: Limits the maximum number of concurrent jobs to 10.
+- `--latency-wait 60`: Wait up to 60 seconds for output files to appear on the filesystem (recommended for HPC shared filesystems).
+
 ### 2. Snakefile Example
 
 Define resources in your `Snakefile`, and the plugin will automatically convert them to scheduler parameters:

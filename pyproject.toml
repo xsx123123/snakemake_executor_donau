@@ -3,7 +3,7 @@ name = "snakemake-executor-plugin-donau"
 version = "0.1.0"
 description = "A Snakemake executor plugin for Huawei Donau scheduler"
 authors = [
-    "Jian Zhang <your_email@example.com>",
+    "Jian Zhang zhangjian199567@outlook.com",
 ]
 readme = "README.md"
 license = "MIT"

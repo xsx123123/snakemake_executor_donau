@@ -39,6 +39,18 @@ pip install -e .
 snakemake --executor donau --jobs 100
 ```
 
+## 🧪 测试说明
+
+项目根目录下提供了 `Test/` 文件夹用于功能测试。您可以使用以下命令验证插件是否正常工作：
+
+```bash
+# 在项目根目录下运行
+snakemake --snakefile Test/snakefile --executor donau --jobs 10 --latency-wait 60
+```
+
+- `--jobs 10`: 限制最大并行任务数为 10。
+- `--latency-wait 60`: 等待最多 60 秒以确保输出文件在文件系统中同步（HPC 共享文件系统建议开启）。
+
 ### 2. Snakefile 示例
 
 在 `Snakefile` 中定义资源需求，插件会自动将其转换为调度器参数：
@@ -88,7 +100,10 @@ rule complex_task:
 ### 1. 执行器系统日志 (Workdir)
 调度行为日志现在会直接生成在您的工作目录下：
 - **路径**: `./donau_executor.log`
-- **内容**: 包含详细的时间戳、UUID、执行的 Shell 命令及其调试信息。
+- **内容**: 
+  - 包含详细的时间戳、UUID、执行的 Shell 命令。
+  - **任务完成提示**: 明确显示 "Job <name> (ID: <id>) finished successfully" 消息。
+  - 调试信息方便运维排查。
 
 ### 2. 任务标准输出日志 (Per Rule)
 每个具体任务的 stdout 和 stderr 会被重定向到：
@@ -164,6 +179,7 @@ donau = "snakemake_executor_plugin_donau:Executor"
 
 ## ⚠️ 注意事项
 
+*   **运行时间配置 (Runtime)**: **不建议**在 `resources` 中设置 `runtime` 或 `time_min`，除非确有必要。设置硬性的时间限制可能会导致长任务被调度器提前终止。此外，不当的时间配置可能会影响 Snakemake 的状态轮询行为。建议尽量让调度器使用默认时长。
 *   **队列名称**: 请确保 Snakefile 中指定的 `queue` 在您的集群中真实存在。
 *   **内存单位**: 插件强制使用 `MB` 作为单位与调度器交互。
 *   **共享文件系统**: 默认配置假设所有计算节点共享文件系统。如果不是，请联系管理员配置存储插件。
