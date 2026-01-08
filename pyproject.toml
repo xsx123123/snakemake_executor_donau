@@ -1,22 +1,24 @@
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
-[project]
-name = "snakemake-executor-donau"
+[tool.poetry]
+name = "snakemake-executor-plugin-donau"
 version = "0.1.0"
 description = "A Snakemake executor plugin for Huawei Donau scheduler"
 authors = [
-  { name="Jian Zhang", email="your_email@example.com" },
+    "Jian Zhang <your_email@example.com>",
 ]
 readme = "README.md"
-requires-python = ">=3.8"
-dependencies = [
-    "snakemake>=8.0.0",
-    "snakemake-interface-executor-plugins",
-    "snakemake-interface-common",
-    "loguru"
-]
+license = "MIT"
+keywords = ["snakemake", "plugin", "executor", "cluster", "donau"]
 
-[project.entry-points."snakemake.executors"]
-donau = "snakemake_executor_donau:Executor"
+[tool.poetry.dependencies]
+python = "^3.8"
+snakemake = "^8.0.0"
+snakemake-interface-common = "^1.17.1"
+snakemake-interface-executor-plugins = "^9.0.0"
+loguru = "^0.7.0"
+
+[tool.poetry.plugins."snakemake.executors"]
+donau = "snakemake_executor_plugin_donau:Executor"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -107,17 +107,55 @@ This plugin relies on the following Donau commands (ensure they are available in
 
 ## 📂 Project Structure
 
+Following the official Snakemake plugin conventions:
+
 ```text
 snakemake_executor_donau/
-├── pyproject.toml                 # Dependencies and metadata
-├── README.md                      # Documentation (English)
+├── pyproject.toml                     # Poetry configuration (deps & entry points)
+├── README.md                          # Documentation (English)
 ├── docs/
-│   └── README_zh.md               # Documentation (Chinese)
-└── snakemake_executor_donau/
-    ├── __init__.py                # Plugin entry point
-    ├── executor.py                # Core logic (submit/query/cancel)
-    └── logging.py                 # Logging configuration
+│   └── README_zh.md                   # Documentation (Chinese)
+└── snakemake_executor_plugin_donau/   # Core code directory (must follow strict naming)
+    ├── __init__.py                    # Plugin entry point
+    ├── executor.py                    # Core logic (submit/query/cancel)
+    └── logging.py                     # Logging configuration
 ```
+
+## 📦 Development & Building Guide
+
+If you intend to develop your own Snakemake plugin or contribute to this project, please adhere to the following standards:
+
+### 1. Naming Convention (Strict)
+Snakemake's plugin discovery mechanism enforces strict naming:
+*   **Code Directory**: Must be named `snakemake_executor_plugin_<name>` (e.g., `snakemake_executor_plugin_donau`).
+*   **Project Name (PyPI)**: Recommended to be `snakemake-executor-plugin-<name>`.
+
+### 2. Configuration (pyproject.toml)
+This project uses the **Poetry** standard format, which is recommended by Snakemake. The key configuration is:
+
+```toml
+[tool.poetry.plugins."snakemake.executors"]
+donau = "snakemake_executor_plugin_donau:Executor"
+```
+This line tells Snakemake: "When the user specifies `--executor donau`, load the `Executor` class from the `snakemake_executor_plugin_donau` module."
+
+### 3. Local Development Flow
+1.  **Clone the Repository**:
+    ```bash
+    git clone https://github.com/xsx123123/snakemake_executor_donau.git
+    cd snakemake_executor_donau
+    ```
+2.  **Install in Editable Mode**:
+    Within your Snakemake environment, run:
+    ```bash
+    pip install -e .
+    ```
+    *Note: You do not need to install `poetry` explicitly; `pip` handles the build via `pyproject.toml`.*
+3.  **Verify**:
+    ```bash
+    snakemake --help | grep donau
+    ```
+    If `donau` appears in the output, the plugin is successfully registered.
 
 ## ⚠️ Notes
 

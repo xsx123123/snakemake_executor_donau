@@ -122,15 +122,53 @@ dsub -n smk_rule_uuid -oo .snakemake/donau_logs/...
 
 ## 📂 项目结构
 
+遵循 Snakemake 官方插件规范：
+
 ```text
 snakemake_executor_donau/
-├── pyproject.toml         # 项目依赖与元数据
-├── README.md              # 说明文档
-└── snakemake_executor_donau/
-    ├── __init__.py        # 插件入口与配置
-    ├── executor.py        # 核心逻辑 (提交/查询/取消)
-    └── logging.py         # 日志模块配置
+├── pyproject.toml                     # Poetry 配置文件 (定义依赖与插件入口)
+├── README.md                          # 说明文档
+└── snakemake_executor_plugin_donau/   # 核心代码目录 (必须遵循命名规范)
+    ├── __init__.py                    # 插件入口与配置
+    ├── executor.py                    # 核心逻辑 (提交/查询/取消)
+    └── logging.py                     # 日志模块配置
 ```
+
+## 📦 开发与构建指南
+
+如果您想开发自己的 Snakemake 插件或对本项目进行二次开发，请务必遵循以下规范：
+
+### 1. 命名规范 (Strict Naming Convention)
+Snakemake 的插件发现机制对命名有严格要求：
+*   **代码目录名**: 必须命名为 `snakemake_executor_plugin_<name>` (例如: `snakemake_executor_plugin_donau`)。
+*   **项目名称 (PyPI)**: 建议使用 `snakemake-executor-plugin-<name>`。
+
+### 2. 配置文件 (pyproject.toml)
+本项目采用 **Poetry** 标准格式，这是 Snakemake 官方推荐的方式。关键配置如下：
+
+```toml
+[tool.poetry.plugins."snakemake.executors"]
+donau = "snakemake_executor_plugin_donau:Executor"
+```
+这行配置告诉 Snakemake：当用户使用 `--executor donau` 时，去加载 `snakemake_executor_plugin_donau` 模块中的 `Executor` 类。
+
+### 3. 本地开发流程
+1.  **克隆代码**:
+    ```bash
+    git clone https://github.com/xsx123123/snakemake_executor_donau.git
+    cd snakemake_executor_donau
+    ```
+2.  **安装 (Editable Mode)**:
+    在您的 Snakemake 环境中运行：
+    ```bash
+    pip install -e .
+    ```
+    *注意：无需手动安装 poetry 命令，pip 会自动识别 pyproject.toml 并构建。*
+3.  **验证**:
+    ```bash
+    snakemake --help | grep donau
+    ```
+    如果输出包含 `donau`，说明插件已成功注册。
 
 ## ⚠️ 注意事项
 
