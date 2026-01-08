@@ -161,11 +161,13 @@ class Executor(RemoteExecutor):
         for job in active_jobs:
             jid = job.external_jobid
             if jid not in status_map:
+                logger.info(f"Job {job.name} (ID: {jid}) finished successfully (not found in queue).")
                 self.report_job_success(job)
                 continue
 
             state = status_map[jid].upper()
             if state in success_states:
+                logger.info(f"Job {job.name} (ID: {jid}) finished successfully (State: {state}).")
                 self.report_job_success(job)
             elif state in fail_states:
                 self.report_job_error(

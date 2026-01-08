@@ -169,6 +169,20 @@ This line tells Snakemake: "When the user specifies `--executor donau`, load the
 
 ## ⚠️ Notes
 
+*   **Runtime Configuration**: It is **not recommended** to set `runtime` or `time_min` in your `resources` unless strictly necessary. Setting a hard limit might cause the scheduler to kill long-running jobs prematurely, or if misconfigured, might affect Snakemake's status polling behavior (though the plugin handles timeouts gracefully). Let the scheduler determine the default walltime when possible.
 *   **Queue Names**: Ensure the `queue` specified in your Snakefile actually exists in your cluster.
 *   **Memory Units**: The plugin enforces `MB` as the unit when interacting with the scheduler.
 *   **Shared Filesystem**: The default configuration assumes all compute nodes share a filesystem. If not, storage plugins need to be configured.
+
+## 📝 Logging & Troubleshooting
+
+### 1. Executor Log (Workdir)
+Scheduling actions, status updates, and errors are now logged directly to your working directory:
+- **Path**: `./donau_executor.log`
+- **Content**: 
+  - Detailed timestamps and UUIDs.
+  - Executed shell commands (`dsub`, `djob`, etc.).
+  - **Job Completion**: Clear "Job <name> (ID: <id>)" finished successfully" messages.
+  - Debugging info for development.
+
+### 2. Job Standard Output (Per Rule)
