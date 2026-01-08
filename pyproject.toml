@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "snakemake-executor-plugin-donau"
-version = "0.1.0"
+version = "0.1.1"
 description = "A Snakemake executor plugin for Huawei Donau scheduler"
 authors = [
     "Jian Zhang zhangjian199567@outlook.com",
