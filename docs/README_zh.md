@@ -19,7 +19,15 @@
 
 确保您的环境已安装 Python 3.8+ 和 Snakemake 8.0+。
 
-### 源码安装 (推荐)
+### pip 安装 (首选)
+
+这是最简单的安装方式，直接从 PyPI 下载：
+
+```bash
+pip install snakemake-executor-plugin-donau
+```
+
+### 源码安装 (开发用)
 
 由于 Snakemake 往往会和 Conda & Mamba 搭配使用，因此推荐激活 Snakemake 环境后再使用 pip 进行安装：
 

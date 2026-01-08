@@ -21,7 +21,15 @@ This is a Snakemake executor plugin designed specifically for the **Huawei Donau
 
 Ensure you have Python 3.8+ and Snakemake 8.0+ installed.
 
-### Source Installation (Recommended)
+### pip Installation (Preferred)
+
+This is the easiest way to install the plugin directly from PyPI:
+
+```bash
+pip install snakemake-executor-plugin-donau
+```
+
+### Source Installation (Development)
 
 Since Snakemake is often used with Conda & Mamba, it is recommended to install the plugin via pip after activating your Snakemake environment:
 
