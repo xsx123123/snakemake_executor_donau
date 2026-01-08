@@ -23,10 +23,10 @@ Ensure you have Python 3.8+ and Snakemake 8.0+ installed.
 
 ### Source Installation (Recommended)
 
-Since this plugin is typically used in specific cluster environments, installing directly from the source is recommended:
+Since Snakemake is often used with Conda & Mamba, it is recommended to install the plugin via pip after activating your Snakemake environment:
 
 ```bash
-git clone <repository-url> snakemake_executor_donau
+git clone https://github.com/xsx123123/snakemake_executor_donau.git
 cd snakemake_executor_donau
 pip install -e .
 ```

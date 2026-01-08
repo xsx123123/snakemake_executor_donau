@@ -21,10 +21,10 @@
 
 ### 源码安装 (推荐)
 
-由于该插件通常在特定集群环境使用，建议直接从源码安装：
+由于 Snakemake 往往会和 Conda & Mamba 搭配使用，因此推荐激活 Snakemake 环境后再使用 pip 进行安装：
 
 ```bash
-git clone <repository-url> snakemake_executor_donau
+git clone https://github.com/xsx123123/snakemake_executor_donau.git
 cd snakemake_executor_donau
 pip install -e .
 ```
