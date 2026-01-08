@@ -11,7 +11,7 @@ keywords = ["snakemake", "plugin", "executor", "cluster", "donau"]
 
 [tool.poetry.dependencies]
 python = "^3.8"
-snakemake = "^8.0.0"
+snakemake = "^9.0.0"
 snakemake-interface-common = "^1.17.1"
 snakemake-interface-executor-plugins = "^9.0.0"
 loguru = "^0.7.0"
