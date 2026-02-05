@@ -111,9 +111,9 @@ The plugin maps Snakemake resource definitions to `dsub` parameters as follows:
 The plugin automatically inherits Snakemake's global logger. If you use `--logger rich-loguru`, plugin logs (submission, success, etc.) will be rendered with the same high-quality formatting.
 
 ### 2. Local Debug Log (Workdir)
-For detailed troubleshooting, the executor writes a persistent log to your working directory:
-- **Path**: `./donau_executor.log`
-- **Content**: Detailed timestamps, UUIDs, full shell commands (`dsub`), and raw scheduler responses.
+For detailed troubleshooting, the executor writes a persistent, high-quality log to your working directory:
+- **Path**: Created in the workflow's current working directory (respects Snakefile `workdir` or `--directory`).
+- **Content**: Modern formatting with colors, precise timestamps, and source code location (module:function:line) for easier debugging. It records UUIDs, full shell commands (`dsub`), and raw scheduler responses.
 
 ### 3. Job Standard Output (Per Rule)
 The stdout and stderr of each specific job are redirected to:
