@@ -23,11 +23,12 @@ class Executor(RemoteExecutor):
         # 生成一个唯一的运行ID
         self.run_uuid = str(uuid.uuid4())
         
-        # 使用工作目录初始化日志
-        workdir = self.workflow.workdir_init or "."
+        # 使用当前工作目录初始化日志（优先尊重 Snakefile 中的 workdir 设置）
+        workdir = os.getcwd()
         setup_logger(workdir)
         
         logger.info(f"Donau Executor initialized. Run UUID: {self.run_uuid}")
+        logger.debug(f"Workflow workdir: {workdir}")
 
     def run_job(self, job: JobExecutorInterface):
         """
@@ -51,7 +52,7 @@ class Executor(RemoteExecutor):
 
         # --- 2. 构造 dsub 命令 ---
         cmd_parts = ["dsub", "-n", jobname, "-oo", logfile]
-        cmd_parts.extend(["--cwd", self.workflow.workdir_init])
+        cmd_parts.extend(["--cwd", os.getcwd()])
 
         # --- 基础资源映射 ---
         # 队列 (-q)

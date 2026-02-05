@@ -13,7 +13,7 @@ This is a Snakemake executor plugin designed specifically for the **Huawei Donau
 - **Native Adaptation**: deeply integrated with `dsub`, `djob`, and `dkill` commands.
 - **Smart Resource Mapping**: Automatically translates Snakemake resources (`threads`, `mem_mb`, `runtime`, `account`, `mpi`) into Donau resource request parameters (e.g., `-R cpu=X,mem=YMB`, `-T`, `-A`, `--mpi`).
 - **Robust Status Checking**: Implements a dual-query mechanism ("Active Queue" + "History Database") to prevent false status judgments caused by jobs finishing instantly or rapid scheduler cleanup.
-- **Detailed Audit Logs**: Integrated with `loguru` to provide full-link debugging logs (command construction, raw output, status changes) for easy troubleshooting.
+- **Seamless Logging**: Integrated with Snakemake's global logging system. Automatically adapts to `--logger rich-loguru` for high-quality terminal output while maintaining detailed local debug logs.
 - **Safe Cancellation**: Supports batch, forced, and non-interactive job cancellation via Ctrl+C.
 - **Async Performance**: Utilizes `asyncio` for non-blocking status polling, suitable for large-scale workflows.
 
@@ -72,7 +72,7 @@ rule complex_task:
     output:
         "results/final.txt"
     # 1. Set Job Priority (Maps to dsub -p)
-    priority: 50
+    priority: 9999
     # 2. Set Resources
     resources:
         queue = "fat_node",       # -q fat_node
@@ -107,15 +107,17 @@ The plugin maps Snakemake resource definitions to `dsub` parameters as follows:
 
 ## 📝 Logging & Troubleshooting
 
-### 1. Executor Log (Workdir)
-Scheduling actions and errors are now logged directly to your working directory:
-- **Path**: `./donau_executor.log`
-- **Content**: Detailed timestamps, UUIDs, executed shell commands, and debugging info.
+### 1. Unified Terminal Output
+The plugin automatically inherits Snakemake's global logger. If you use `--logger rich-loguru`, plugin logs (submission, success, etc.) will be rendered with the same high-quality formatting.
 
-### 2. Job Standard Output (Per Rule)
+### 2. Local Debug Log (Workdir)
+For detailed troubleshooting, the executor writes a persistent log to your working directory:
+- **Path**: `./donau_executor.log`
+- **Content**: Detailed timestamps, UUIDs, full shell commands (`dsub`), and raw scheduler responses.
+
+### 3. Job Standard Output (Per Rule)
 The stdout and stderr of each specific job are redirected to:
 - **Path**: `.snakemake/donau_logs/rule_<name>/<wildcards>/<jobid>.log`
-- **Usage**: To check specific job errors or program outputs.
 
 ## 🔧 Underlying Logic
 
@@ -194,15 +196,3 @@ This line tells Snakemake: "When the user specifies `--executor donau`, load the
 *   **Memory Units**: The plugin enforces `MB` as the unit when interacting with the scheduler.
 *   **Shared Filesystem**: The default configuration assumes all compute nodes share a filesystem. If not, storage plugins need to be configured.
 
-## 📝 Logging & Troubleshooting
-
-### 1. Executor Log (Workdir)
-Scheduling actions, status updates, and errors are now logged directly to your working directory:
-- **Path**: `./donau_executor.log`
-- **Content**: 
-  - Detailed timestamps and UUIDs.
-  - Executed shell commands (`dsub`, `djob`, etc.).
-  - **Job Completion**: Clear "Job <name> (ID: <id>)" finished successfully" messages.
-  - Debugging info for development.
-
-### 2. Job Standard Output (Per Rule)
