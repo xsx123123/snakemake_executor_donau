@@ -61,6 +61,11 @@ class Executor(RemoteExecutor):
         elif job.resources.get("partition"):
             cmd_parts.extend(["-q", str(job.resources.partition)])
 
+        # 任意架构 (-aa): 多瑙集群硬性要求 -q 必须与 -aa 一起提交，
+        # 否则作业将永远处于 PENDING 状态，无法被调度。
+        if getattr(self.executor_settings, "any_arch", True):
+            cmd_parts.append("-aa")
+
         # 优先级 (-p): Donau 范围 [1, 9999]
         if job.priority != 0:
             # 将 Snakemake 优先级映射到 1-9999
@@ -146,14 +151,17 @@ class Executor(RemoteExecutor):
         active_jobs: List[SubmittedJobInfo]
     ) -> Generator[SubmittedJobInfo, None, None]:
         success_states = {"FINISHED", "SUCCEEDED", "DONE", "0"}
-        fail_states = {"FAILED", "ABORTED", "TIMEOUT", "NODE_FAIL", "TERMINATED", "EXIT"}
+        fail_states = {
+            "FAILED", "ABORTED", "TIMEOUT", "NODE_FAIL",
+            "TERMINATED", "EXIT", "CANCELED", "CANCELLED",
+        }
 
         job_ids = {job.external_jobid for job in active_jobs}
         if not job_ids:
             return
 
         status_map = await self._get_donau_job_status_async(job_ids)
-        
+
         if status_map is None:
             for job in active_jobs:
                 yield job
@@ -162,8 +170,13 @@ class Executor(RemoteExecutor):
         for job in active_jobs:
             jid = job.external_jobid
             if jid not in status_map:
-                logger.info(f"Job {job.job.name} (ID: {jid}) finished successfully (not found in queue).")
-                self.report_job_success(job)
+                # 查询不到状态 ≠ 作业成功。作业可能仍在运行，
+                # 保持活跃并等待下一轮轮询（由 init_seconds_before_status_checks
+                # 和 seconds_between_status_checks 控制节奏）。
+                logger.debug(
+                    f"Job {job.job.name} (ID: {jid}) state unknown, keeping it active."
+                )
+                yield job
                 continue
 
             state = status_map[jid].upper()
@@ -172,7 +185,7 @@ class Executor(RemoteExecutor):
                 self.report_job_success(job)
             elif state in fail_states:
                 self.report_job_error(
-                    job, 
+                    job,
                     msg=f"Donau job {jid} failed with state {state}",
                     aux_logs=[job.aux.get("logfile")]
                 )
@@ -199,35 +212,55 @@ class Executor(RemoteExecutor):
         return ""
 
     async def _get_donau_job_status_async(self, job_ids: set) -> Optional[Dict[str, str]]:
+        """
+        查询作业状态，返回 {jobid: state}。
+
+        查询策略（与 README 设计一致）：
+        1. 先查活跃队列：`djob -o state --no-header <jid>`（不带 -D），
+           可覆盖 PENDING / RUNNING / 近期完成的作业；
+        2. 活跃队列查不到时，追加 `-D` 查询已完成/历史作业数据库：
+           `djob -D -o state --no-header <jid>`；
+        3. 两轮都查不到 → 不放入 status_map，调用方将其保持活跃继续等待，
+           绝不视为成功（作业可能仍在运行）。
+
+        仅当子进程本身抛异常（djob 不可用等）时才返回 None，
+        调用方据此保留全部作业，避免误判。
+        """
         status_map = {}
         error_occurred = False
+
+        async def _query(jid, extra_args: List[str]) -> Optional[str]:
+            """单次 djob 查询，返回状态字符串；无匹配返回 None。"""
+            cmd = ["djob"] + extra_args + ["-o", "state", "--no-header", str(jid)]
+            process = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await process.communicate()
+
+            if process.returncode != 0:
+                logger.debug(f"djob {' '.join(extra_args)} failed for {jid}: {stderr.decode().strip()}")
+                return None
+
+            for line in stdout.decode().splitlines():
+                line = line.strip()
+                # 过滤 "query successfully, no matches." 等非状态行
+                if line and "no matches" not in line:
+                    return line.split()[0]
+            return None
 
         async def query_djob(target_ids: set):
             nonlocal error_occurred
             if not target_ids:
                 return
-            
-            # 针对每个 job_id 单独查询，因为只输出 state 无法区分对应哪个 ID
-            # 虽然效率低一点，但最准确符合用户要求：djob -D -o "state" --no-header <ID>
-            
-            for jid in target_ids:
-                cmd = ["djob", "-D", "-o", "state", "--no-header", jid]
-                try:
-                    process = await asyncio.create_subprocess_exec(
-                        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-                    )
-                    stdout, stderr = await process.communicate()
-                    
-                    if process.returncode != 0:
-                        # 查不到或者报错
-                        logger.debug(f"djob failed for {jid}: {stderr.decode()}")
-                        # 不标记全局 error，允许部分查询失败
-                        continue
 
-                    output = stdout.decode().strip()
-                    if output:
-                        # 输出应该只有一行状态，例如 "SUCCEEDED"
-                        state = output.split('\n')[0].strip()
+            # 针对每个 job_id 单独查询，因为只输出 state 无法区分对应哪个 ID
+            for jid in target_ids:
+                try:
+                    state = await _query(jid, [])
+                    if state is None:
+                        # 活跃队列查不到，回退到已完成作业数据库 (-D)
+                        state = await _query(jid, ["-D"])
+                    if state is not None:
                         status_map[jid] = state
                 except Exception as e:
                     logger.debug(f"Error querying Donau status for {jid}: {e}")

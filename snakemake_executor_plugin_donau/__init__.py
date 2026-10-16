@@ -3,12 +3,19 @@ Snakemake Executor Plugin for Huawei Donau Scheduler
 Author: Jian Zhang (Adapted by Hajimi)
 """
 
+from pydantic import Field
 from snakemake_interface_executor_plugins.settings import CommonSettings, ExecutorSettingsBase
 from .executor import Executor
 
-# 定义插件配置类（即使暂时为空也必须存在）
+# 插件配置类
 class ExecutorSettings(ExecutorSettingsBase):
-    pass
+    any_arch: bool = Field(
+        default=True,
+        metadata={
+            "help": "Pass -aa (any-arch) to dsub together with -q. "
+                    "Required by Donau clusters, otherwise jobs stay PENDING forever."
+        },
+    )
 
 # 1. 通用配置：定义这是一个远程执行器
 common_settings = CommonSettings(

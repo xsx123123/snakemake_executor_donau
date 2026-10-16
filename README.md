@@ -130,8 +130,8 @@ This plugin relies on the following Donau commands (ensure they are available in
     *   Includes automatic retry logic for network stability.
 
 2.  **Status Query (`djob`)**
-    *   Command: `djob -o "jobid state" --no-header <id_list>`
-    *   Logic: Prioritizes querying the active list. If an ID is missing, it automatically appends the `-D` flag to query the completed/history database, ensuring accurate status retrieval.
+    *   Command: `djob -o "state" --no-header <jobid>` (active queue), falling back to `djob -D -o "state" --no-header <jobid>` (completed/history database).
+    *   Logic: Prioritizes querying the active list. If an ID is missing, it automatically appends the `-D` flag to query the completed/history database, ensuring accurate status retrieval. If both queries return nothing, the job stays active for the next poll and is never misreported as successful.
 
 3.  **Job Cancellation (`dkill`)**
     *   Command: `dkill -y --force <id_list>`

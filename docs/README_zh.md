@@ -128,8 +128,8 @@ rule complex_task:
     *   使用 `--cwd` 锁定工作目录。
 
 2.  **查询状态 (`djob`)**
-    *   命令：`djob -o "jobid state" --no-header <id_list>`
-    *   逻辑：优先查询活跃列表。如果 ID 不存在，自动追加 `-D` 参数查询已完成/历史作业数据库，确保状态判断准确无误。
+    *   命令：`djob -o "state" --no-header <jobid>`（活跃队列），查不到时回退 `djob -D -o "state" --no-header <jobid>`（已完成/历史数据库）。
+    *   逻辑：优先查询活跃列表。如果 ID 不存在，自动追加 `-D` 参数查询已完成/历史作业数据库，确保状态判断准确无误。两轮都查不到时保持作业活跃等待下轮轮询，绝不误判为成功。
 
 3.  **取消任务 (`dkill`)**
     *   命令：`dkill -y --force <id_list>`
