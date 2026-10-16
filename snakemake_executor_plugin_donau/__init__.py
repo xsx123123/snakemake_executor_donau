@@ -3,6 +3,8 @@ Snakemake Executor Plugin for Huawei Donau Scheduler
 Author: Jian Zhang (Adapted by Hajimi)
 """
 
+from typing import Optional
+
 from pydantic import Field
 from snakemake_interface_executor_plugins.settings import CommonSettings, ExecutorSettingsBase
 from .executor import Executor
@@ -14,6 +16,37 @@ class ExecutorSettings(ExecutorSettingsBase):
         metadata={
             "help": "Pass -aa (any-arch) to dsub together with -q. "
                     "Required by Donau clusters, otherwise jobs stay PENDING forever."
+        },
+    )
+    heartbeat_interval: int = Field(
+        default=600,
+        metadata={
+            "help": "Seconds between heartbeat log lines while polling job states. "
+                    "Heartbeats distinguish 'jobs still running' from 'a stuck main "
+                    "process' in donau_executor.log. Set to 0 to disable."
+        },
+    )
+    default_queue: Optional[str] = Field(
+        default=None,
+        metadata={
+            "help": "Default queue (-q) for jobs that do not define a 'queue' or "
+                    "'partition' resource. On Donau clusters -q still has to be "
+                    "combined with -aa (see any_arch)."
+        },
+    )
+    log_dir: Optional[str] = Field(
+        default=None,
+        metadata={
+            "help": "Directory for donau_executor.log. Defaults to the workflow "
+                    "working directory."
+        },
+    )
+    submit_extra_args: Optional[str] = Field(
+        default=None,
+        metadata={
+            "help": "Extra arguments appended verbatim to every dsub command, "
+                    "e.g. '--env ALL'. Job-level 'dsub_extra' resource takes "
+                    "precedence."
         },
     )
 
