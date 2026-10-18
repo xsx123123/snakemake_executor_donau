@@ -1,5 +1,9 @@
 # Snakemake Executor Plugin for Huawei Donau Scheduler
 
+<p align="center">
+  <img src="docs/logo.png" alt="Snakemake Donau executor logo" width="320">
+</p>
+
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue)
 ![Snakemake](https://img.shields.io/badge/snakemake-9.0%2B-green)
 ![Status](https://img.shields.io/badge/status-stable-brightgreen)
