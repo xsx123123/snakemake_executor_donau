@@ -1,0 +1,27 @@
+{
+  "pytest": {
+    "full": {
+      "tests": 34,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0
+    },
+    "focused": {
+      "tests": 22,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0
+    }
+  },
+  "cargo_tests": {
+    "unit_passed": 8,
+    "integration_passed": 4
+  },
+  "artifacts_sha256": {
+    "dist/snakemake_executor_plugin_donau-0.2.0-py3-none-linux_x86_64.whl": "d7993c67e69da64d6f58b5331c1cb38232e315224a7264e16894024807f3ea9a",
+    "dist/snakemake_executor_plugin_donau-0.2.0.tar.gz": "dc29f2cba3ac1c49f383fbcfa2c9427162a3222fa0cb4493ada707084fa6f5ad",
+    "rust/target/release/donau-sidecar": "259b42192f57b9c65335b0534a6e2c706e89e30b23d75bcf50004909b6acd7ae",
+    "Test/run_cluster_tests.py": "575051f57d81d877fa18d98a96c7bb1614c477d80feff11a283d059ed0e2c9a7"
+  },
+  "real_cluster_test": "user will execute; no real-cluster acceptance claimed"
+}

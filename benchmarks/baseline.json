@@ -1,0 +1,66 @@
+{
+  "kind": "synthetic CLI, no Donau cluster",
+  "delay_seconds": 0.02,
+  "results": [
+    {
+      "count": 100,
+      "workers": 1,
+      "concurrent_callers": false,
+      "wall_seconds": 9.538215982989641,
+      "parent_cpu_seconds": 0.04114410199999999,
+      "throughput": 10.484140868516608,
+      "p50": 0.09309686948836315,
+      "p90": 0.10012257398921065,
+      "p99": 0.11785068898461759,
+      "maximum": 0.16993005698896013
+    },
+    {
+      "count": 500,
+      "workers": 1,
+      "concurrent_callers": false,
+      "wall_seconds": 55.922870787006104,
+      "parent_cpu_seconds": 0.25151998,
+      "throughput": 8.940885776489445,
+      "p50": 0.11422487799427472,
+      "p90": 0.1198847120103892,
+      "p99": 0.12381788800121285,
+      "maximum": 0.1265325479907915
+    },
+    {
+      "count": 1000,
+      "workers": 1,
+      "concurrent_callers": false,
+      "wall_seconds": 112.46124878199771,
+      "parent_cpu_seconds": 0.486646774,
+      "throughput": 8.891951768546212,
+      "p50": 0.10834889150282834,
+      "p90": 0.11767540100845508,
+      "p99": 0.3828105440188665,
+      "maximum": 0.44869393602130003
+    },
+    {
+      "count": 1000,
+      "workers": 16,
+      "concurrent_callers": false,
+      "wall_seconds": 112.53727372799767,
+      "parent_cpu_seconds": 0.5029751600000001,
+      "throughput": 8.88594477965583,
+      "p50": 0.11450848649838008,
+      "p90": 0.11943288301699795,
+      "p99": 0.12305915699107572,
+      "maximum": 0.1345940440078266
+    },
+    {
+      "count": 1000,
+      "workers": 16,
+      "concurrent_callers": true,
+      "wall_seconds": 25.983661921985913,
+      "parent_cpu_seconds": 0.45567125099999983,
+      "throughput": 38.485722412892706,
+      "p50": 0.4147558789991308,
+      "p90": 0.4591585519956425,
+      "p99": 0.5005509319889825,
+      "maximum": 0.5476019060006365
+    }
+  ]
+}

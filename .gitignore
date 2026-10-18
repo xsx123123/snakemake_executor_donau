@@ -8,3 +8,10 @@ build/
 
 # 测试缓存
 .pytest_cache/
+
+.venv/
+rust/target/
+
+.snakemake/
+
+Test/runs/

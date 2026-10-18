@@ -9,7 +9,12 @@ import shlex
 import uuid
 import time
 import asyncio
+import hashlib
+import json
+import threading
+from pathlib import Path
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from typing import List, Generator, Dict, Optional
 
 from snakemake_interface_executor_plugins.executors.base import SubmittedJobInfo
@@ -18,6 +23,8 @@ from snakemake_interface_executor_plugins.jobs import JobExecutorInterface
 from snakemake_interface_common.exceptions import WorkflowError
 
 from .logging import setup_logger, logger
+from .recovery import LegacyRecovery
+from .sidecar_client import SidecarClient, SidecarUnavailable, SubmissionFailed, SidecarRequestError, find_sidecar
 
 # 状态轮询心跳间隔（秒）默认值；可用 --donau-heartbeat-interval 覆盖。
 # 轮询循环正常运行时也会周期性输出一条日志，
@@ -46,14 +53,82 @@ class Executor(RemoteExecutor):
         setup_logger(workdir, log_dir)
 
         self._last_status_heartbeat = 0.0
+        concurrency = getattr(self.executor_settings, "submit_concurrency", 16)
+        if not isinstance(concurrency, int) or not 1 <= concurrency <= 64:
+            raise WorkflowError("donau-submit-concurrency must be between 1 and 64")
+        self._submit_concurrency = concurrency
+        self._submit_pool = ThreadPoolExecutor(max_workers=concurrency)
+
+        self._sidecar = None
+        self._legacy_recovery = None
+        self._backend_lock = threading.Lock()
+        self._journal_path = Path(log_dir or workdir).resolve() / "donau_sidecar.journal"
+        self._mode = os.environ.get("DONAU_MODE") or getattr(self.executor_settings, "sidecar_mode", None) or getattr(self.executor_settings, "mode", "auto")
+        if self._mode not in ("auto", "legacy", "sidecar"):
+            raise WorkflowError("DONAU_MODE must be auto, legacy or sidecar")
+        if self._mode != "legacy":
+            path = find_sidecar(getattr(self.executor_settings, "sidecar_path", None))
+            try:
+                if not path:
+                    raise SidecarUnavailable("donau-sidecar binary not found")
+                self._sidecar = SidecarClient(
+                    path, self._journal_path, concurrency,
+                    getattr(self.executor_settings, "recover_orphans", False))
+            except (OSError, SidecarUnavailable) as error:
+                logger.warning("Sidecar unavailable; using legacy CLI: {}", error)
 
         logger.info(f"Donau Executor initialized. Run UUID: {self.run_uuid}")
         logger.debug(f"Workflow workdir: {workdir}")
 
+    def shutdown(self):
+        try:
+            self._submit_pool.shutdown(wait=True)
+            if getattr(self, "_sidecar", None) is not None:
+                self._sidecar.close()
+            if getattr(self, "_legacy_recovery", None) is not None:
+                self._legacy_recovery.close()
+        finally:
+            super().shutdown()
+
+    def run_jobs(self, jobs):
+        """Bound outstanding submissions; callbacks stay on the scheduler thread."""
+        pending = {}
+        errors = []
+
+        def collect():
+            done, _ = wait(pending, return_when=FIRST_COMPLETED)
+            for future in done:
+                job, request = pending.pop(future)
+                try:
+                    self._report_submission(job, request, future.result())
+                except Exception as error:
+                    errors.append(error)
+
+        try:
+            for job in jobs:
+                if errors:
+                    break
+                if len(pending) >= self._submit_concurrency:
+                    collect()
+                    if errors:
+                        break
+                self.run_job_pre(job)
+                request = self._build_submit_request(job)
+                future = self._submit_pool.submit(self._submit_worker, request)
+                pending[future] = (job, request)
+        finally:
+            # Account for every already accepted submission, including after an error.
+            while pending:
+                collect()
+        if errors:
+            raise errors[0]
+
     def run_job(self, job: JobExecutorInterface):
-        """
-        核心方法：构造 dsub 命令并提交任务
-        """
+        request = self._build_submit_request(job)
+        external_jobid = self._submit_pool.submit(self._submit_worker, request).result()
+        self._report_submission(job, request, external_jobid)
+
+    def _build_submit_request(self, job):
         # --- 1. 准备日志路径和作业名 ---
         if job.is_group():
             log_folder = f"group_{job.groupid}"
@@ -162,30 +237,77 @@ class Executor(RemoteExecutor):
         cmd_str = " ".join(shlex.quote(part) for part in cmd_parts)
         logger.debug(f"Submitting job {job.name} with command: {cmd_str}")
 
-        # --- 3. 执行提交并解析 Job ID ---
+        # Stable across workflow restarts; independent of transient Snakemake job IDs.
+        outputs = sorted(os.path.abspath(str(output)) for output in job.output)
+        identity = {"cwd": os.getcwd(), "outputs": outputs}
+        if not outputs:
+            identity.update(rule=job.name, wildcards=sorted(
+                getattr(job, "wildcards_dict", {}).items()))
+        request_id = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+        return {"cmd": cmd_parts, "logfile": logfile, "name": job.name,
+                "sidecar": {"id": request_id, "name": jobname, "cwd": os.getcwd(),
+                            "logfile": logfile, "exec_cmd": exec_job,
+                            "run_uuid": self.run_uuid, "attempt": getattr(job, "attempt", 1),
+                            "argv": cmd_parts[1:]}}
+
+    def _submit_worker(self, request):
+        sidecar = getattr(self, "_sidecar", None)
+        if sidecar is not None:
+            try:
+                external_jobid = sidecar.submit(request["sidecar"])
+                request["logfile"] = request["sidecar"]["logfile"]
+                logger.info("Job {} submitted successfully (ID: {})", request["name"], external_jobid)
+                return external_jobid
+            except (SubmissionFailed, SidecarRequestError) as error:
+                raise WorkflowError("Donau sidecar submission failed: {}".format(error))
+            except SidecarUnavailable as error:
+                # Recover from the durable journal before allowing any CLI retry.
+                logger.warning("Sidecar unavailable; reconciling journal before legacy fallback: {}", error)
+                with self._backend_lock:
+                    if self._sidecar is not None:
+                        self._sidecar.close()
+                        self._sidecar = None
+        journal = getattr(self, "_journal_path", None)
+        if journal is not None and journal.exists() and journal.stat().st_size:
+            with self._backend_lock:
+                if self._legacy_recovery is None:
+                    try:
+                        self._legacy_recovery = LegacyRecovery(journal)
+                    except (OSError, ValueError) as error:
+                        raise WorkflowError("Donau journal recovery unavailable: {}".format(error))
+            jid = self._legacy_recovery.submit(
+                request["sidecar"], lambda: self._legacy_submit_worker(request))
+            request["logfile"] = request["sidecar"]["logfile"]
+            return jid
+        return self._legacy_submit_worker(request)
+
+    def _legacy_submit_worker(self, request):
+        cmd_parts = request["cmd"]
+        cmd_str = " ".join(shlex.quote(part) for part in cmd_parts)
+        name = request["name"]
         try:
             output = self._run_cmd_with_retry(cmd_parts)
-            logger.debug(f"Submission output for {job.name}: {output}")
+            logger.debug(f"Submission output for {name}: {output}")
         except subprocess.CalledProcessError as e:
-            logger.error(f"Donau submission failed for {job.name}. Output: {e.output}")
+            logger.error(f"Donau submission failed for {name}. Output: {e.output}")
             raise WorkflowError(
                 f"Donau submission failed.\nCommand: {cmd_str}\nOutput: {e.output}"
             )
 
         match = re.search(r"<(\d+)>", output) or re.search(r"^\s*(\d+)", output)
         if not match:
-            logger.error(f"Could not parse Job ID for {job.name}. Output: {output}")
+            logger.error(f"Could not parse Job ID for {name}. Output: {output}")
             raise WorkflowError(f"Could not parse Donau Job ID from output:\n{output}")
 
         external_jobid = match.group(1)
-        logger.info(f"Job {job.name} submitted successfully (ID: {external_jobid})")
+        logger.info(f"Job {name} submitted successfully (ID: {external_jobid})")
 
+        return external_jobid
+
+    def _report_submission(self, job, request, external_jobid):
         self.report_job_submission(
-            SubmittedJobInfo(
-                job,
-                external_jobid=external_jobid,
-                aux={"logfile": logfile}
-            )
+            SubmittedJobInfo(job, external_jobid=external_jobid,
+                             aux={"logfile": request["logfile"]})
         )
 
     async def check_active_jobs(
@@ -202,7 +324,15 @@ class Executor(RemoteExecutor):
         if not job_ids:
             return
 
-        status_map = await self._get_donau_job_status_async(job_ids)
+        status_map = None
+        if getattr(self, "_sidecar", None) is not None:
+            try:
+                response = await self._sidecar_async({"type": "poll", "ids": list(job_ids)})
+                status_map = response["states"]
+            except (SidecarUnavailable, SidecarRequestError, KeyError) as error:
+                logger.warning("Sidecar poll unavailable; using legacy djob: {}", error)
+        if status_map is None:
+            status_map = await self._get_donau_job_status_async(job_ids)
 
         # 轮询心跳：轮询循环正常工作时也周期性输出一条日志，
         # 以便区分“作业正常运行中”与“主进程挂死”（两者都表现为无日志）。
@@ -233,6 +363,18 @@ class Executor(RemoteExecutor):
                 yield job
             return
 
+        failed_ids = [job.external_jobid for job in active_jobs
+                      if status_map.get(job.external_jobid, "").upper() in fail_states]
+        diagnostic_limit = asyncio.Semaphore(self._submit_concurrency)
+
+        async def diagnose(jid):
+            async with diagnostic_limit:
+                return await self._get_job_diagnostics(jid)
+
+        diagnostics = dict(zip(failed_ids, await asyncio.gather(
+            *(diagnose(jid) for jid in failed_ids)
+        )))
+
         for job in active_jobs:
             jid = job.external_jobid
             if jid not in status_map:
@@ -251,7 +393,7 @@ class Executor(RemoteExecutor):
                 self.report_job_success(job)
             elif state in fail_states:
                 # 失败时自动取回 djob -ll 诊断信息，让用户无需手动排查死因
-                diag = await self._get_job_diagnostics(jid)
+                diag = diagnostics.get(jid, {})
                 diag_str = ""
                 if diag:
                     diag_lines = "\n".join(f"  {k}: {v}" for k, v in diag.items())
@@ -273,10 +415,17 @@ class Executor(RemoteExecutor):
             return
         job_ids = [j.external_jobid for j in active_jobs]
         logger.info(f"Cancelling {len(job_ids)} Donau job(s): {', '.join(job_ids)}")
+        if getattr(self, "_sidecar", None) is not None:
+            try:
+                response = self._sidecar.request({"type": "cancel", "ids": job_ids})
+                if response.get("type") == "canceled":
+                    return
+            except (SidecarUnavailable, SidecarRequestError) as error:
+                logger.warning("Sidecar cancel unavailable; using legacy dkill: {}", error)
         try:
             result = subprocess.run(
                 ["dkill", "-y", "--force"] + job_ids,
-                check=False, capture_output=True, text=True,
+                check=False, capture_output=True, text=True, timeout=30,
             )
             output = (result.stdout or result.stderr or "").strip()
             if result.returncode != 0:
@@ -298,12 +447,26 @@ class Executor(RemoteExecutor):
                 time.sleep(delay * (i + 1))
         return ""
 
+    async def _sidecar_async(self, message):
+        loop = asyncio.get_running_loop()
+        sidecar = self._sidecar
+        if sidecar is None:
+            raise SidecarUnavailable("sidecar has switched to legacy")
+        return await loop.run_in_executor(None, sidecar.request, message)
+
     async def _get_job_diagnostics(self, jid: str) -> Dict[str, str]:
         """
         作业失败时从 `djob -ll <jid>` 提取关键诊断字段（exitMessage、
         退出码、峰值内存、运行时长、执行节点等）。任何失败都返回空 dict，
         诊断是尽力而为的附加信息，绝不影响失败状态本身的上报。
         """
+        if getattr(self, "_sidecar", None) is not None:
+            try:
+                response = await self._sidecar_async({"type": "diag", "id": str(jid)})
+                return response.get("fields", {})
+            except (SidecarUnavailable, SidecarRequestError):
+                pass
+        process = None
         try:
             process = await asyncio.create_subprocess_exec(
                 "djob", "-ll", str(jid),
@@ -311,12 +474,17 @@ class Executor(RemoteExecutor):
                 stderr=asyncio.subprocess.PIPE,
             )
             stdout, _ = await asyncio.wait_for(process.communicate(), timeout=30)
+            if process.returncode != 0:
+                return {}
         except Exception as e:
+            if process is not None and process.returncode is None:
+                process.kill()
+                await process.communicate()
             logger.debug(f"Could not fetch djob -ll diagnostics for {jid}: {e}")
             return {}
 
         diag = {}
-        for line in stdout.decode().splitlines():
+        for line in stdout.decode(errors="replace").splitlines():
             m = re.match(r"^\s*([A-Za-z]+)[ \t]+(.*\S)[ \t]*$", line)
             if m and m.group(1) in _DIAGNOSTIC_FIELDS:
                 diag[m.group(1)] = m.group(2)

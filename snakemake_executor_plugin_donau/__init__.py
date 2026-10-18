@@ -5,20 +5,55 @@ Author: Jian Zhang (Adapted by Hajimi)
 
 from typing import Optional
 
-from pydantic import Field
+from dataclasses import dataclass, field
 from snakemake_interface_executor_plugins.settings import CommonSettings, ExecutorSettingsBase
 from .executor import Executor
 
+def _parse_bool(value):
+    if isinstance(value, bool):
+        return value
+    lowered = value.lower()
+    if lowered in ("true", "1", "yes"):
+        return True
+    if lowered in ("false", "0", "no"):
+        return False
+    raise ValueError("expected true or false")
+
+
 # 插件配置类
+@dataclass
 class ExecutorSettings(ExecutorSettingsBase):
-    any_arch: bool = Field(
+    mode: str = field(
+        default="auto",
+        metadata={"help": "Execution backend: auto, legacy or sidecar (DONAU_MODE overrides).",
+                  "choices": ["auto", "legacy", "sidecar"]},
+    )
+    sidecar_mode: Optional[str] = field(
+        default=None,
+        metadata={"help": "Alias for --donau-mode.", "choices": ["auto", "legacy", "sidecar"]},
+    )
+    sidecar_path: Optional[str] = field(
+        default=None,
+        metadata={"help": "Path to donau-sidecar; defaults to package bin/, module directory or PATH."},
+    )
+    recover_orphans: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Continue tracking recovered jobs (true/false). Never blindly resubmit UNKNOWN jobs.",
+                  "type": _parse_bool},
+    )
+    submit_concurrency: int = field(
+        default=16,
+        metadata={"help": "Maximum concurrent dsub submissions (1-64, default 16)."},
+    )
+    any_arch: Optional[bool] = field(
         default=True,
         metadata={
+            "type": _parse_bool,
             "help": "Pass -aa (any-arch) to dsub together with -q. "
                     "Required by Donau clusters, otherwise jobs stay PENDING forever."
         },
     )
-    heartbeat_interval: int = Field(
+    heartbeat_interval: int = field(
         default=600,
         metadata={
             "help": "Seconds between heartbeat log lines while polling job states. "
@@ -26,7 +61,7 @@ class ExecutorSettings(ExecutorSettingsBase):
                     "process' in donau_executor.log. Set to 0 to disable."
         },
     )
-    default_queue: Optional[str] = Field(
+    default_queue: Optional[str] = field(
         default=None,
         metadata={
             "help": "Default queue (-q) for jobs that do not define a 'queue' or "
@@ -34,14 +69,14 @@ class ExecutorSettings(ExecutorSettingsBase):
                     "combined with -aa (see any_arch)."
         },
     )
-    log_dir: Optional[str] = Field(
+    log_dir: Optional[str] = field(
         default=None,
         metadata={
             "help": "Directory for donau_executor.log. Defaults to the workflow "
                     "working directory."
         },
     )
-    submit_extra_args: Optional[str] = Field(
+    submit_extra_args: Optional[str] = field(
         default=None,
         metadata={
             "help": "Extra arguments appended verbatim to every dsub command, "

@@ -246,7 +246,10 @@ This line tells Snakemake: "When the user specifies `--executor donau`, load the
 
 ## ⚠️ Notes
 
-*   **Interruption & Restart**: When Snakemake is terminated with Ctrl+C, it automatically cancels all submitted Donau jobs via `dkill` (look for `Cancelling N Donau job(s)` in the log). However, if the main process is killed with `kill -9` or the terminal is closed, **jobs are NOT cancelled** and become orphans. Before restarting the same workflow, verify no old `smk_*` jobs are still alive:
+*   **Interruption & Restart**: Sidecar mode journals accepted submissions and
+    reconciles surviving jobs on restart; keep the journal and follow the
+    [recovery guide](docs/sidecar.md). The following manual procedure applies to
+    legacy runs without a journal. When Snakemake is terminated with Ctrl+C, it automatically cancels all submitted Donau jobs via `dkill` (look for `Cancelling N Donau job(s)` in the log). However, if the main process is killed with `kill -9` or the terminal is closed, **jobs are NOT cancelled** and become orphans. Before restarting the same workflow, verify no old `smk_*` jobs are still alive:
     ```bash
     djob -u $USER -o "jobId name state" | grep smk_
     ```
@@ -259,3 +262,24 @@ This line tells Snakemake: "When the user specifies `--executor donau`, load the
 *   **Queue Names**: Ensure the `queue` specified in your Snakefile actually exists in your cluster.
 *   **Memory Units**: The plugin enforces `MB` as the unit when interacting with the scheduler.
 *   **Shared Filesystem**: The default configuration assumes all compute nodes share a filesystem. If not, storage plugins need to be configured.
+
+
+### Bounded submission concurrency
+
+`--donau-submit-concurrency 16` controls simultaneous `dsub` processes (1–64).
+Use `1` for serial submission. Requests are built and submission callbacks run
+on the Snakemake scheduler thread; only CLI work runs in the pool. The pool
+is drained before shutdown. Single-job `run_job` calls remain synchronous.
+`--donau-any-arch true|false` explicitly controls `-aa` (default `true`).
+
+For reproducible local synthetic measurements, see [baseline.md](baseline.md).
+`SAMPLES=1000 snakemake --snakefile Test/snakefile --executor donau --jobs 100`
+selects the stress workflow size; its memory, I/O and random failure workloads
+are retained. See [sidecar configuration and recovery](docs/sidecar.md) for the
+Rust proxy, journal recovery, mock tests, binary wheel build and rollback.
+Real Donau cluster validation remains pending.
+
+For cluster validation, use [Test/run_cluster_tests.py](Test/run_cluster_tests.py)
+and the [cluster testing guide](Test/集群测试说明.md). It isolates outputs,
+collects CLI timings and independent scheduler truth, and supports comparison,
+controlled main-process crashes and recovery without deleting the journal.

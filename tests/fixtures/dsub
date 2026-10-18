@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+"""Synthetic submission latency only; does not run a workflow."""
+import os
+import time
+
+time.sleep(float(os.environ.get("MOCK_DSUB_DELAY", "0.02")))
+print("Job <{}> submitted".format(os.getpid()))

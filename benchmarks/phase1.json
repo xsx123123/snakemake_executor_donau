@@ -1,0 +1,17 @@
+{
+  "kind": "synthetic actual plugin run_jobs, 20ms CLI sleep",
+  "results": [
+    {
+      "workers": 1,
+      "count": 1000,
+      "wall_seconds": 36.93186296598287,
+      "throughput": 27.076890243015306
+    },
+    {
+      "workers": 16,
+      "count": 1000,
+      "wall_seconds": 5.281277208006941,
+      "throughput": 189.34813694003805
+    }
+  ]
+}

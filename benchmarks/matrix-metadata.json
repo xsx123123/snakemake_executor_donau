@@ -1,0 +1,12 @@
+{
+  "artifact": "matrix.jsonl",
+  "command": ".venv/bin/python benchmarks/matrix.py --counts 1000 10000",
+  "mock_submit_delay_seconds": 0.02,
+  "python": "3.12.3",
+  "snakemake": "9.27.0",
+  "executor_interface": "9.4.0",
+  "scheduler": "local SQLite CLI shim, MOCK_EXECUTE=0",
+  "queue": null,
+  "real_cluster": false,
+  "note": "Measures actual plugin method submission and state reporting, not Snakemake DAG end-to-end. Status CLI total includes background intervals; it is not a per-round count. Serial parent/direct-child CPU are measured separately; no IO-wait percentage is asserted. General-purpose workstation background load is uncontrolled."
+}

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "snakemake-executor-plugin-donau"
-version = "0.1.6"
+version = "0.2.0"
 description = "A Snakemake executor plugin for Huawei Donau scheduler"
 authors = [
     "Jian Zhang zhangjian199567@outlook.com",
@@ -8,6 +8,17 @@ authors = [
 readme = "README.md"
 license = "MIT"
 keywords = ["snakemake", "plugin", "executor", "cluster", "donau"]
+exclude = ["rust/target", "Test/runs", "tests/__pycache__"]
+include = [
+    { path = "Test", format = "sdist" },
+    { path = "docs/sidecar.md", format = "sdist" },
+    { path = "rust/Cargo.toml", format = "sdist" },
+    { path = "rust/Cargo.lock", format = "sdist" },
+    { path = "rust/src", format = "sdist" },
+    { path = "rust/tests", format = "sdist" },
+    { path = "tests", format = "sdist" },
+    { path = "scripts/build_sidecar_wheel.py", format = "sdist" },
+]
 
 [tool.poetry.dependencies]
 python = "^3.8"

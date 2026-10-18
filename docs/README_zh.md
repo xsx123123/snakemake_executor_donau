@@ -243,7 +243,8 @@ donau = "snakemake_executor_plugin_donau:Executor"
 
 ## ⚠️ 注意事项
 
-*   **中断与重启**: Snakemake 被 Ctrl+C 终止时会自动通过 `dkill` 取消所有已提交的 Donau 作业（日志中可见 `Cancelling N Donau job(s)` 记录）。但如果主进程被 `kill -9` 杀死或终端直接关闭，**作业不会被取消**，将成为孤儿作业。重启相同工作流前，请先确认旧的 `smk_*` 作业已全部结束：
+*   **中断与重启**: sidecar 模式会持久记录提交并在重启时对账，保留 journal，按
+    [恢复操作说明](sidecar.md) 重启。以下人工核对流程适用于没有 journal 的 legacy 运行。Snakemake 被 Ctrl+C 终止时会自动通过 `dkill` 取消所有已提交的 Donau 作业（日志中可见 `Cancelling N Donau job(s)` 记录）。但如果主进程被 `kill -9` 杀死或终端直接关闭，**作业不会被取消**，将成为孤儿作业。重启相同工作流前，请先确认旧的 `smk_*` 作业已全部结束：
     ```bash
     djob -u $USER -o "jobId name state" | grep smk_
     ```
@@ -256,3 +257,18 @@ donau = "snakemake_executor_plugin_donau:Executor"
 *   **队列名称**: 请确保 Snakefile 中指定的 `queue` 在您的集群中真实存在。
 *   **内存单位**: 插件强制使用 `MB` 作为单位与调度器交互。
 *   **共享文件系统**: 默认配置假设所有计算节点共享文件系统。如果不是，请联系管理员配置存储插件。
+
+
+## 并发与 Rust sidecar
+
+`--donau-submit-concurrency 16` 控制 1–64 个并发提交；设为 1 可串行对照。
+`--donau-mode auto|legacy|sidecar` 选择后端（默认 auto，兼容 `--donau-sidecar-mode`），
+`--donau-sidecar-path` 指定 Rust 可执行文件。`--donau-recover-orphans true` 可持续跟踪
+未被当前工作流重新请求的存量作业。`--donau-any-arch true|false` 控制 -aa。
+`SAMPLES=1000` 可调整 Test/snakefile 样本数量，原压力与随机失败用例保留。
+
+构建、二进制打包、崩溃恢复、协议、mock 测试和 `DONAU_MODE=legacy` 回滚说明见
+[sidecar 文档](sidecar.md)；[基线记录](../baseline.md) 区分合成测试与真实集群验收。
+
+真实集群测试入口：`python3 Test/run_cluster_tests.py --queue <队列> --samples 100 --dry-run`。
+完整对照矩阵、真值采样、故障注入与恢复命令见 [集群测试说明](../Test/集群测试说明.md)。
